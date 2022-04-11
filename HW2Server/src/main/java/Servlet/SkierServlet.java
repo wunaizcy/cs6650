@@ -3,6 +3,7 @@ package Servlet;
 import PooledChannel.ChannelService;
 import PooledChannel.Send;
 
+import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 
 import java.io.IOException;
@@ -18,6 +19,7 @@ import javax.servlet.http.HttpServletResponse;
 
 public class SkierServlet extends javax.servlet.http.HttpServlet {
   private final static String QUEUE_NAME = "threadExQ";
+  private final static String QUEUE_TWO_NAME = "threadExQ2";
   private ChannelService channelService;
 
   @Override
@@ -54,7 +56,8 @@ public class SkierServlet extends javax.servlet.http.HttpServlet {
     } else {
       // try send to channel
      try {
-        sendToChannel(String.valueOf(urlParts[8]), jsonSb.toString());
+        String newJsonBody = jsonSb.toString() + ',' + urlParts[2] + ','+ urlParts[6];
+        sendToChannel(String.valueOf(urlParts[8]), newJsonBody);
       } catch (IOException | TimeoutException ex) {
        Logger.getLogger(SkierServlet.class.getName()).log(Level.SEVERE, null, ex);
     }
@@ -65,9 +68,14 @@ public class SkierServlet extends javax.servlet.http.HttpServlet {
     try {
       // channel per thread
       Channel channel = channelService.getChannel();
+      String fanoutExchange = "fanout-exchange";
+      channel.exchangeDeclare(fanoutExchange, BuiltinExchangeType.FANOUT,true);
       channel.queueDeclare(QUEUE_NAME, true, false, false, null);
+      channel.queueBind(QUEUE_NAME, fanoutExchange,"");
+      channel.queueDeclare(QUEUE_TWO_NAME,true,false,false,null);
+      channel.queueBind(QUEUE_TWO_NAME,fanoutExchange,"");
       String message = skiId +"/" + json;
-      channel.basicPublish("", QUEUE_NAME, null, message.getBytes(StandardCharsets.UTF_8));
+      channel.basicPublish(fanoutExchange, "", null, message.getBytes(StandardCharsets.UTF_8));
       channelService.returnChannel(channel);
 
     } catch (IOException | TimeoutException ex) {
@@ -94,7 +102,6 @@ public class SkierServlet extends javax.servlet.http.HttpServlet {
       }
     }
     if (!(urlPath[3].equals("seasons")) || !(urlPath[5].equals("days"))|| !(urlPath[7].equals("skiers"))){
-      System.out.println(urlPath[3]);
       return false;
     }
     return true;
